@@ -644,6 +644,12 @@ boolean argument: either `1`, `yes`, or `true` to enable, or `0`, `no`,
     any compression extension which will be appended to this extension if compression
     is enabled.
 
+`OutputSize=`, `--output-size=`
+:   If set, the output disk image is resized to the given size. Takes a size in
+    bytes. The suffixes `K`, `M` and `G` can be used to specify the size in kilobytes,
+    megabytes and gigabytes. This setting only grows the disk and is limited to full
+    disk images and no other output format.
+
 `CompressOutput=`, `--compress-output=`
 :   Configure compression for the resulting image or archive. The argument can be
     either a boolean or a compression algorithm (**xz**, **zstd**). **zstd**
@@ -688,6 +694,27 @@ boolean argument: either `1`, `yes`, or `true` to enable, or `0`, `no`,
     file will be named after it (possibly suffixed with the version). The
     identifier is also passed via the `$IMAGE_ID` to any build scripts
     invoked. The image ID is automatically added to `/usr/lib/os-release`.
+    When using `Format=oci`, the image ID is also set as the
+    `org.opencontainers.image.ref.name` annotation on the OCI index
+    descriptor.
+
+`OciLabels=`, `--oci-labels=`
+:   Set OCI config labels on images produced with `Format=oci`. Takes
+    a space-separated list of `KEY=VALUE` assignments. These labels are
+    stored in the OCI image config blob and are visible via
+    `podman inspect` or `docker inspect` (equivalent to `LABEL` in a
+    Containerfile). This option may be specified more than once, in
+    which case all listed labels will be set. If the same label is set
+    twice, the later setting overrides the earlier one.
+
+`OciAnnotations=`, `--oci-annotations=`
+:   Set OCI manifest annotations on images produced with `Format=oci`.
+    Takes a space-separated list of `KEY=VALUE` assignments. These
+    annotations are stored in the OCI image manifest. mkosi
+    automatically sets `io.systemd.mkosi.version` and, if `ImageVersion=`
+    is set, `org.opencontainers.image.version`. User-specified
+    annotations override these defaults. This option may be specified
+    more than once, in which case all listed annotations will be set.
 
 `SplitArtifacts=`, `--split-artifacts=`
 :   The artifact types to split out of the final image. A comma-delimited
@@ -1453,9 +1480,9 @@ boolean argument: either `1`, `yes`, or `true` to enable, or `0`, `no`,
     See the **TOOLS TREE** section for further details.
 
 `ToolsTreeDistribution=`, `--tools-tree-distribution=`
-:   Set the distribution to use for the default tools tree. Defaults to the host distribution except for
-    Ubuntu, which defaults to Debian, and RHEL, CentOS, Alma and Rocky, which default to Fedora, or `custom`
-    if the distribution of the host is not a supported distribution.
+:   Set the distribution to use for the default tools tree. Defaults to the host distribution except if the
+    host (not target) distribution is Ubuntu, which defaults to Debian, and RHEL, CentOS, Alma and Rocky,
+    which default to Fedora, or `custom` if the distribution of the host is not a supported distribution.
 
 `ToolsTreeRelease=`, `--tools-tree-release=`
 :   Set the distribution release to use for the default tools tree. By
@@ -1752,6 +1779,10 @@ boolean argument: either `1`, `yes`, or `true` to enable, or `0`, `no`,
 
     Currently, setting a proxy client key is only supported when **dnf** or
     **dnf5** is used to build the image.
+
+`MakeScriptsExecutable=`, `--make-scripts-executable=`
+:   If one of the hook scripts (see `SCRIPTS` section) is not marked as executable, attempt to chmod it
+    instead of failing outright. Defaults to `no`.
 
 ### [Runtime] Section (previously known as the [Host] section)
 
@@ -2088,7 +2119,7 @@ boolean argument: either `1`, `yes`, or `true` to enable, or `0`, `no`,
     and no architecture has been explicitly configured yet, the host
     architecture is used.
 
-:   `Architecture=uefi` can be used to match against any architecture that supports UEFI.
+    `Architecture=uefi` can be used to match against any architecture that supports UEFI.
 
 `Repositories=`
 :   Matches against repositories enabled with the `Repositories=` setting.
@@ -3270,7 +3301,7 @@ In this scenario, the kernel is loaded from the ESP in the image by **systemd-bo
   `ubuntu-archive-keyring`, `kali-archive-keyring` and/or `debian-archive-keyring`
   packages explicitly, in addition to **apt**, depending on what kind of distribution
   images you want to build.
-- The minimum required Python version is 3.9.
+- The minimum required Python version is 3.10.
 
 ## Unprivileged User Namespaces
 

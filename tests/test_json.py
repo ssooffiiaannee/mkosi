@@ -4,7 +4,6 @@ import os
 import textwrap
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import pytest
 
@@ -49,7 +48,7 @@ from mkosi.distribution import Distribution
 
 
 @pytest.mark.parametrize("path", [None, "/baz/qux"])
-def test_args(path: Optional[Path]) -> None:
+def test_args(path: Path | None) -> None:
     dump = textwrap.dedent(
         f"""\
         {{
@@ -254,6 +253,7 @@ def test_config() -> None:
             "Machine": "machine",
             "MachineId": "b58253b0-cc92-4a34-8782-bcd99b20d07f",
             "MakeInitrd": false,
+            "MakeScriptsExecutable": false,
             "ManifestFormat": [
                 "json",
                 "changelog"
@@ -263,11 +263,14 @@ def test_config() -> None:
             "MinimumVersion": "123",
             "Mirror": null,
             "NSpawnSettings": null,
+            "OciAnnotations": {},
+            "OciLabels": {},
             "OpenPGPTool": "gpg",
             "Output": "outfile",
             "OutputDirectory": "/your/output/here",
             "OutputExtension": "raw",
             "OutputMode": 83,
+            "OutputSize": null,
             "Overlay": true,
             "PackageCacheDirectory": "/a/b/c",
             "PackageDirectories": [],
@@ -508,6 +511,7 @@ def test_config() -> None:
         locale="en_C.UTF-8",
         machine_id=uuid.UUID("b58253b0cc924a348782bcd99b20d07f"),
         machine="machine",
+        make_scripts_executable=False,
         make_initrd=False,
         manifest_format=[ManifestFormat.json, ManifestFormat.changelog],
         maxmem=123,
@@ -516,9 +520,12 @@ def test_config() -> None:
         minimum_version="123",
         mirror=None,
         nspawn_settings=None,
+        oci_annotations={},
+        oci_labels={},
         openpgp_tool="gpg",
         output_dir=Path("/your/output/here"),
         output_extension="raw",
+        output_size=None,
         output_format=OutputFormat.uki,
         output_mode=0o123,
         output="outfile",

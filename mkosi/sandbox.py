@@ -82,6 +82,7 @@ PR_CAP_AMBIENT_IS_SET = 1
 PR_CAP_AMBIENT_RAISE = 2
 PR_CAP_AMBIENT_LOWER = 3
 PR_CAPBSET_DROP = 24
+PR_SET_DUMPABLE = 4
 # These definitions are taken from the libseccomp headers
 SCMP_ACT_ALLOW = 0x7FFF0000
 SCMP_ACT_ERRNO = 0x00050000
@@ -131,7 +132,6 @@ libc = ctypes.CDLL(None, use_errno=True)
 libc.syscall.restype = ctypes.c_long
 libc.unshare.argtypes = (ctypes.c_int,)
 libc.statfs.argtypes = (ctypes.c_char_p, ctypes.c_void_p)
-libc.eventfd.argtypes = (ctypes.c_int, ctypes.c_int)
 libc.mount.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p)
 libc.pivot_root.argtypes = (ctypes.c_char_p, ctypes.c_char_p)
 libc.umount2.argtypes = (ctypes.c_char_p, ctypes.c_int)
@@ -563,40 +563,47 @@ def become_user(uid: int, gid: int) -> None:
     process, make it wait until the parent process has unshared a user namespace, and then writes
     the necessary uid and gid mappings.
     """
+    libc.prctl.argtypes = (ctypes.c_int, ctypes.c_long)
+
+    # If we're running after fork() but before execve() and change UIDs/GIDs earlier, the kernel might have
+    # made us non-dumpable, which means the user namespace uidmap files in /proc become owned by root and
+    # thus we won't have permission to write them. Make sure we're dumpable again so we have permission to
+    # write the files after we fork().
+    if libc.prctl(PR_SET_DUMPABLE, 1) < 0:
+        oserror("prctl")
+
     ppid = os.getpid()
 
-    event = libc.eventfd(0, 0)
-    if event < 0:
-        oserror("eventfd")
+    event = os.eventfd(0, os.EFD_CLOEXEC)
 
-    pid = os.fork()
-    if pid == 0:
+    with close(event):
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.eventfd_read(event)
+                os.close(event)
+                with open(f"/proc/{ppid}/setgroups", "wb") as f:
+                    f.write(b"deny\n")
+                with open(f"/proc/{ppid}/gid_map", "wb") as f:
+                    f.write(f"{gid} {os.getgid()} 1\n".encode())
+                with open(f"/proc/{ppid}/uid_map", "wb") as f:
+                    f.write(f"{uid} {os.getuid()} 1\n".encode())
+            except OSError as e:
+                os._exit(e.errno or 1)
+            except BaseException:
+                os._exit(1)
+            else:
+                os._exit(0)
+
         try:
-            os.read(event, ctypes.sizeof(ctypes.c_uint64))
-            os.close(event)
-            with open(f"/proc/{ppid}/setgroups", "wb") as f:
-                f.write(b"deny\n")
-            with open(f"/proc/{ppid}/gid_map", "wb") as f:
-                f.write(f"{gid} {os.getgid()} 1\n".encode())
-            with open(f"/proc/{ppid}/uid_map", "wb") as f:
-                f.write(f"{uid} {os.getuid()} 1\n".encode())
+            unshare(CLONE_NEWUSER)
         except OSError as e:
-            os._exit(e.errno or 1)
-        except BaseException:
-            os._exit(1)
-        else:
-            os._exit(0)
-
-    try:
-        unshare(CLONE_NEWUSER)
-    except OSError as e:
-        if e.errno == EPERM and is_main():
-            print(UNSHARE_EPERM_MSG, file=sys.stderr)
-        raise
-    finally:
-        os.write(event, ctypes.c_uint64(1))
-        os.close(event)
-        _, status = os.waitpid(pid, 0)
+            if e.errno == EPERM and is_main():
+                print(UNSHARE_EPERM_MSG, file=sys.stderr)
+            raise
+        finally:
+            os.eventfd_write(event, 1)
+            _, status = os.waitpid(pid, 0)
 
     rc = os.waitstatus_to_exitcode(status)
     if rc != 0:
